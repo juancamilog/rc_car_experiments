@@ -1,0 +1,21 @@
+<launch>
+    <arg name="topic_description" default="rc_car_topics.yml"/>
+    <arg name="experience_rate" default="200"/>
+    <arg name="slop" default="0.1"/>
+
+    <!-- bridge observations and actions streams for RL with ROS topics-->
+    <node name="topics_to_vector" pkg="robot_learning" type="topics_to_vector.py" output="screen">
+        <!-- yaml configuration file -->
+        <rosparam command="load" file="$(find rc_car_experiments)/launch/$(arg topic_description)"/>
+        <!-- this is a parameter for synchronizing  multiple topics (how much to wait for missing messages) -->
+        <param name="slop" value="$(arg slop)"/>
+        <!-- the rate at which we want to publish the state for the rbf policy -->
+        <param name="rate" value="$(arg experience_rate)"/>
+    </node>
+    
+    <!--bridge signals for resetting and stopping the robot-->
+    <node pkg="robot_learning" type="signal_bridge_node.py" name="signal_bridge_node" output="screen"/>
+
+    <!-- marshalling node for switching between user control and RL algorithms -->
+    <node pkg="rc_car_experiments" type="marshall_node.py" name="rl_marshall" output="screen"/>
+</launch>

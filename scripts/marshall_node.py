@@ -1,11 +1,13 @@
 #!/usr/bin/env python
+import atexit
 import rospy
-from mavros_msgs.msg import OverrideRCIn, ParamValue, State
+from mavros_msgs.msg import RCIn, OverrideRCIn, ParamValue, State
 from mavros_msgs.srv import ParamGet, ParamSet, ParamSetRequest
 from enum import IntEnum
 
 from robot_learning.marshall import *
 
+TRIGGER_CHANNEL = 4
 
 class RC_CHANNELS(IntEnum):
     THROTTLE = 1
@@ -14,11 +16,13 @@ class RC_CHANNELS(IntEnum):
 
 
 class PX4MarshallNode(MarshallNode):
-    def __init__(self, name='aqua_marshall'):
+    def __init__(self, name='px4_marshall'):
         super(PX4MarshallNode, self).__init__(name)
+        self.prev_channels = []
+        self.name = rospy.get_name()
 
         rospy.loginfo(
-            '%s: waiting for /mavros/param/set..' % rospy.get_name())
+            '[%s] waiting for /mavros/param/set..' % self.name)
         rospy.wait_for_service('/mavros/param/set')
         self.set_param_client = rospy.ServiceProxy(
             '/mavros/param/set', ParamSet)
@@ -26,12 +30,20 @@ class PX4MarshallNode(MarshallNode):
             '/mavros/param/get', ParamGet)
 
         # get defaults
-        self.SYSID_MYGCS = self.get_param_client('SYSID_MYGCS').value
-        self.ARMING_REQUIRE = self.get_param_client('ARMING_REQUIRE').value
-        self.ARMING_CHECK = self.get_param_client('ARMING_CHECK').value
+        self.params = dict(
+            SYSID_MYGCS=ParamValue(1, 0.0), 
+            ARMING_REQUIRE=ParamValue(0, 0.0),
+            ARMING_CHECK=ParamValue(0, 0.0))
+
+        self.default_params = {}
+
+        for p in self.params:
+            self.default_params[p] = self.get_param_client(p).value
 
         self.cmd_pub = rospy.Publisher(
             '/mavros/rc/override', OverrideRCIn, queue_size=1)
+        self.rc_sub = rospy.Subscriber(
+            '/mavros/rc/in', RCIn, self.rc_in_callback)
 
         if self.FSM in [FSM_STATES.USER, FSM_STATES.USER_PROMPT]:
             self.set_user_mode()
@@ -48,30 +60,52 @@ class PX4MarshallNode(MarshallNode):
             self.process_state)
 
         rospy.loginfo(
-            '%s: initialized into %s mode' % (rospy.get_name(), self.FSM))
+            '%s: initialized into %s mode' % (self.name, self.FSM))
 
     def set_user_mode(self):
+        pass
         # reset params
-        req = ParamSetRequest('SYSID_MYGCS', self.SYSID_MYGCS)
-        response = self.set_param_client(req)
-        req = ParamSetRequest('ARMING_REQUIRE', self.ARMING_REQUIRE)
-        response = self.set_param_client(req)
-        req = ParamSetRequest('ARMING_CHECK', self.ARMING_CHECK)
-        response = self.set_param_client(req)
+        #for p in self.params:
+        #    req = ParamSetRequest(p, self.default_params[p])
+        #    response = self.set_param_client(req)
+        #    if not response:
+        #        rospy.loginfo("[%s] Failed to set %s" % (self.name, p))
 
     def set_rl_mode(self):
         # get the old values for the parameters we're going to change
-        self.SYSID_MYGCS = self.get_param_client('SYSID_MYGCS').value
-        self.ARMING_REQUIRE = self.get_param_client('ARMING_REQUIRE').value
-        self.ARMING_CHECK = self.get_param_client('ARMING_CHECK').value
+        for p in self.params:
+            self.default_params[p] = self.get_param_client(p).value
         
         # set new values
-        req = ParamSetRequest('SYSID_MYGCS', ParamValue(1, 0.0))
-        response = self.set_param_client(req)
-        req = ParamSetRequest('ARMING_REQUIRE', ParamValue(0, 0.0))
-        response = self.set_param_client(req)
-        req = ParamSetRequest('ARMING_CHECK', ParamValue(0, 0.0))
-        response = self.set_param_client(req)
+        for p in self.params:
+            req = ParamSetRequest(p, self.params[p])
+            response = self.set_param_client(req)
+            if not response:
+                rospy.loginfo("[%s] Failed to set %s" % (self.name, p))
+
+    def rc_in_callback(self, msg):
+        if self.FSM == FSM_STATES.USER_PROMPT:
+            self.trigger_start_pub.publish()
+        if len(msg.channels) >= 4:
+            if self.FSM == FSM_STATES.USER_PROMPT:
+                self.trigger_start_pub.publish()
+                # check if we the user wants to run an experiment
+                # this is done by toggling the switch: we should read first a
+                # 1520, then a 967.
+                if len(self.prev_channels)>= 4:
+                    if (self.prev_channels[TRIGGER_CHANNEL] == 967
+                        and msg.channels[TRIGGER_CHANNEL] == 1520):
+                        rospy.loginfo("[%s] Triggering reset" % (self.name))
+                        self.trigger_start_pub.publish()
+            elif self.FSM == FSM_STATES.RL:
+                # check if the user wants to take over
+                #if msg.channels[TRIGGER_CHANNEL] == 967:
+                #    rospy.loginfo("[%s] Triggering stop" % (self.name))
+                #    self.trigger_stop_pub.publish()
+                pass
+
+            
+        self.prev_channels = msg.channels
 
     def process_command(self, msg):
         if self.FSM == FSM_STATES.RL:
@@ -83,9 +117,18 @@ class PX4MarshallNode(MarshallNode):
     def spin(self):
         rospy.spin()
 
+    def shutdown(self):
+        # reset original parameters
+        for p in self.default_params:
+            req = ParamSetRequest(p, self.default_params[p])
+            response = self.set_param_client(req)
+            if not response:
+                rospy.loginfo("[%s] Failed to set %s" % (self.name, p))
+
 if __name__ == '__main__':
     try:
-        node = PX4MarshallNode()
-        node.spin()
+        px4 = PX4MarshallNode()
+        atexit.register(px4.shutdown)
+        px4.spin()
     except rospy.ROSInterruptException:
         pass

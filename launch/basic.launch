@@ -1,7 +1,7 @@
 <launch>
     <arg name="topic_description" default="rc_car_topics.yml"/>
     <arg name="experience_rate" default="200"/>
-    <arg name="slop" default="0.1"/>
+    <arg name="slop" default="0.05"/>
 
     <!-- bridge observations and actions streams for RL with ROS topics-->
     <node name="topics_to_vector" pkg="robot_learning" type="topics_to_vector.py" output="screen">

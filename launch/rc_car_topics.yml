@@ -9,16 +9,19 @@ experience_state_topics:
     - topic_name: /mavros/global_position/local
       type: {package: nav_msgs, name: Odometry}
       filter: ["pose.pose.position","pose.pose.orientation"]
+    - topic_name: /mavros/imu/data
+      type: {package: sensor_msgs, name: Imu}
+      filter: ["angular_velocity", "linear_acceleration"]
 
 # experience_command_topics corresponds to the topics we want to publish when
 # stepping the policy computed with PILCO
 # As shown in this example, we can define default values for some fields in the
 # message that will be published
 experience_command_topics:
-    - topic_name: /mavros/rc/override
+    - topic_name: /sandbox/rc/override
       type: {package: mavros_msgs, name: OverrideRCIn}
-      filter: ["channels[0]"]
+      filter: ["channels[0]", "channels[1]"]
 
 # preprocessing operations are square, abs, deg2rad and rad2deg
 preprocessing_operations:
-    'channels: ['uint16']
+    channels: ['uint16']

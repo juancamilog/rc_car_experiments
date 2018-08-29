@@ -22,7 +22,7 @@ class PX4MarshallNode(MarshallNode):
         self.name = rospy.get_name()
 
         rospy.loginfo(
-            '[%s] waiting for /mavros/param/set..' % self.name)
+            '[%s] waiting for /mavros/param/set...' % self.name)
         rospy.wait_for_service('/mavros/param/set')
         self.set_param_client = rospy.ServiceProxy(
             '/mavros/param/set', ParamSet)
@@ -37,8 +37,11 @@ class PX4MarshallNode(MarshallNode):
 
         self.default_params = {}
 
+        self.get_param('SYSID_MYGCS')
+        rospy.loginfo(
+            '[%s] waiting for parameters to be downloaded...' % self.name)
         for p in self.params:
-            self.default_params[p] = self.get_param_client(p).value
+            self.default_params[p] = self.get_param(p)
 
         self.cmd_pub = rospy.Publisher(
             '/mavros/rc/override', OverrideRCIn, queue_size=1)
@@ -74,7 +77,7 @@ class PX4MarshallNode(MarshallNode):
     def set_rl_mode(self):
         # get the old values for the parameters we're going to change
         for p in self.params:
-            self.default_params[p] = self.get_param_client(p).value
+            self.default_params[p] = self.get_param(p)
         
         # set new values
         for p in self.params:
@@ -124,6 +127,13 @@ class PX4MarshallNode(MarshallNode):
             response = self.set_param_client(req)
             if not response:
                 rospy.loginfo("[%s] Failed to set %s" % (self.name, p))
+
+    def get_param(self, param):
+        response = self.get_param_client(param)
+        while not response.success:
+            rospy.sleep(1.0)
+            response = self.get_param_client(param)
+        return response.value
 
 if __name__ == '__main__':
     try:

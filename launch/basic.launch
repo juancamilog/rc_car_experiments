@@ -1,10 +1,10 @@
 <launch>
     <arg name="topic_description" default="rc_car_topics.yml"/>
-    <arg name="experience_rate" default="200"/>
-    <arg name="slop" default="0.05"/>
+    <arg name="experience_rate" default="1000"/>
+    <arg name="slop" default="0.1"/>
 
     <!-- bridge observations and actions streams for RL with ROS topics-->
-    <node name="topics_to_vector" pkg="robot_learning" type="topics_to_vector.py" output="screen">
+    <node name="topics_to_vector" pkg="robot_learning" type="topics_to_vector.py" output="screen" >
         <!-- yaml configuration file -->
         <rosparam command="load" file="$(find rc_car_experiments)/launch/$(arg topic_description)"/>
         <!-- this is a parameter for synchronizing  multiple topics (how much to wait for missing messages) -->
@@ -18,4 +18,11 @@
 
     <!-- marshalling node for switching between user control and RL algorithms -->
     <node pkg="rc_car_experiments" type="marshall_node.py" name="rl_marshall" output="screen"/>
+
+    <!-- setup stream rates -->
+    <node pkg="mavros" type="mavsys" name="mavsys1" output="screen" args="mode -b 1"/>
+    <node pkg="mavros" type="mavsys" name="mavsys2" output="screen" args="rate --position 50 --extra1 50"/>
+
+    <!-- setup joystick node -->
+    <node pkg="joy" type="joy_node" name="joy" output="screen"/>
 </launch>

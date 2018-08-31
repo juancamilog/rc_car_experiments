@@ -15,9 +15,9 @@ class RC_CHANNELS(IntEnum):
     USER_TOGGLE = 5
 
 
-class PX4MarshallNode(MarshallNode):
-    def __init__(self, name='px4_marshall'):
-        super(PX4MarshallNode, self).__init__(name)
+class APMMarshallNode(MarshallNode):
+    def __init__(self, name='apm_marshall'):
+        super(APMMarshallNode, self).__init__(name)
         self.prev_channels = []
         self.name = rospy.get_name()
 
@@ -137,8 +137,8 @@ class PX4MarshallNode(MarshallNode):
 
 if __name__ == '__main__':
     try:
-        px4 = PX4MarshallNode()
-        atexit.register(px4.shutdown)
-        px4.spin()
+        apm = APMMarshallNode()
+        atexit.register(apm.shutdown)
+        apm.spin()
     except rospy.ROSInterruptException:
         pass
